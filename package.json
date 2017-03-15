@@ -7,9 +7,18 @@
     "express": "^4.15.2",
     "express-handlebars": "^3.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hermano360/meadowlark.git"
+  },
   "devDependencies": {
     "chai": "^3.5.0",
-    "mocha": "^3.2.0"
+    "grunt": "^0.4.5",
+    "grunt-cafe-mocha": "^0.1.13",
+    "grunt-contrib-jshint": "^1.1.0",
+    "grunt-exec": "^2.0.0",
+    "mocha": "^3.2.0",
+    "zombie": "^5.0.5"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
