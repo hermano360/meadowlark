@@ -3,3 +3,4 @@ node_modules
 # put any other files you dont want to check in here
 .DS_Store
 *.bak
+credentials.js
