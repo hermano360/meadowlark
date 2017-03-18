@@ -1,7 +1,13 @@
-var express = require('express');
-var fortune = require('./lib/fortune.js');
-var formidable = require('formidable');
-var jpupload = require('jquery-file-upload-middleware');
+var express 	= require('express');
+var fortune 	= require('./lib/fortune.js');
+var formidable 	= require('formidable');
+var jpupload 	= require('jquery-file-upload-middleware');
+var credentials	= require('./credentials.js');
+var cartValidation = require('./lib/cartValidation.js');
+var connect = require('connect');
+var emailService = require('./lib/email.js')(credentials);
+
+
 var app = express();
 
 //set up handlebars view engine
@@ -15,8 +21,6 @@ var handlebars = require('express-handlebars')
 				return null;
 			}
 		}});
-
-
 
 app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
@@ -33,6 +37,14 @@ app.use(function(req, res, next){
 		req.query.test === '1';
 	next();
 });
+app.use(require('cookie-parser')(credentials.cookieSecret));
+app.use(require('express-session')({
+	resave : false,
+	saveUninitialized: false,
+	secret: credentials.cookieSecret
+}));
+
+app.use(require('./lib/tourRequiresWaiver.js'));
 
 
 // mocked weather data
@@ -71,6 +83,13 @@ app.use(function(req, res, next){
  	next();
 });
 
+app.use(function(req,res,next){
+	// if theres a flash message, transfer
+	// it to the context, then clear it
+	res.locals.flash = req.session.flash;
+	delete req.session.flash;
+	next();
+});
 
 app.get('/', function(req,res){
 	res.render('home');
@@ -106,10 +125,99 @@ app.get('/data/nursery-rhyme', function(req,res){
 app.get('/newsletter', function(req,res){
 	//we will learn about CSRF later..for now we will just provide dummy value
 	res.render('newsletter', { csrf: 'Test Test the real value goes here later' });
+	// emailService.send('hermano360@gmail.com', 'Hood River tours on sale Today!', 'Get \'em while they\'re hot!');
 });
+
+// slightly modified version of the official W3C HTML5 email regex
+// https://html.spec.whatwg.org/multipage/forms.html#valid-e-mail-address
+// for now, we're mocking NewsletterSignup:
+function NewsletterSignup(){
+}
+NewsletterSignup.prototype.save = function(cb){
+	cb();
+};
+
+
+var VALID_EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+app.post('/newsletter', function(req, res){
+	var name = req.body.name || '', email = req.body.email || '';
+	// input validation
+	if(!email.match(VALID_EMAIL_REGEX)) {
+		if(req.xhr) return res.json({ error: 'Invalid name email address.' });
+		req.session.flash = {
+			type: 'danger',
+			intro: 'Validation error!',
+			message: 'The email address you entered was  not valid.',
+		};
+		return res.redirect(303, '/newsletter/archive');
+	}
+
+		// NewsletterSignup is an example of an object you might create
+		// since every implementation will vary, it is up to you to write these
+		// project-specific interfaces. This simply shows how a typical Express
+		// implementation might look in your project.
+		
+	new NewsletterSignup({ name: name, email: email }).save(function(err){
+		if(err) {
+			if(req.xhr) return res.json({ error: 'Database error.' });
+			req.session.flash = {
+				type: 'danger',
+				intro: 'Database error!',
+				message: 'There was a database error; please try again later.',
+			};
+			return res.redirect(303, '/newsletter/archive');
+		}
+
+
+		if(req.xhr) return res.json({ success: true });
+		req.session.flash = {
+			type: 'success',
+			intro: 'Thank you!',
+			message: 'You have now been signed up for the newsletter.',
+		};
+		return res.redirect(303, '/newsletter/archive');
+	});
+});
+
+
+
+app.use(cartValidation.checkWaivers);
+app.use(cartValidation.checkGuestCounts);
 
 app.get('/thank-you', function(req,res){
 	res.render('thank-you');
+});
+
+app.post('/cart/checkout', function(req,res){
+	var cart = req.session.cart;
+	if(!cart) next(new Error('Cart does not exist.'));
+	var name = req.body.name || '', email = req.body.email || '';
+	//input validation
+	if(!email.match(VALID_EMAIL_REGEX)){
+		return res.next(new Error('Invalid email address.'));
+	}
+	//assign a random cart ID; normally we use a database ID here
+	cart.number = Math.random().toString().replace(/^0\.0*/,'');
+	cart.billing = {
+		name: name,
+		email: email
+	};
+	res.render('email/cart-thank-you',
+		{layout: null, cart: cart}, function(err,html){
+			if(err) console.log('error in email template');
+			mailTransport.sendMail({
+				from: '"Meadowlark Travel": info@meadowlarktravel.com',
+				to: cart.billing.email,
+				subject: 'Thank you for Booking your Traip with Meadowlark',
+				html: html,
+				generateTextFromHtml: true
+			}, function(err){
+				if(err) console.error('Unable to send confirmation: ' + err.stack);
+			});
+		}
+		);
+	res.render('cart-thank-you', { cart: cart });
 });
 
 app.get('/contest/vacation-photo', function(req,res){
