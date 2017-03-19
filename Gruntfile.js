@@ -10,6 +10,9 @@ module.exports = function(grunt){
 
 	// configure plugins
 	grunt.initConfig({
+		cafemocha: {
+			all: { src: 'qa/tests-*.js', options: { ui: 'tdd' }, }
+		},
 		jshint: {
 			app: ['meadowlark.js', 'public/js/**/*.js', 'lib/**/*.js'],
 			qa: ['Gruntfile.js', 'public/qa/**/*.js', 'qa/**/*.js']
@@ -20,5 +23,5 @@ module.exports = function(grunt){
 	});	
 
 	// register tasks
-	grunt.registerTask('default', ['jshint','exec']);
+	grunt.registerTask('default', ['cafemocha','jshint','exec']);
 };
