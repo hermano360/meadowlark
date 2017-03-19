@@ -4,4 +4,6 @@ node_modules
 .DS_Store
 *.bak
 credentials.js
-*.log
+
+log
+

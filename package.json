@@ -14,7 +14,6 @@
     "express-session": "^1.15.1",
     "formidable": "^1.1.1",
     "jquery-file-upload-middleware": "^0.1.8",
-    "minimatch": "^3.0.2",
     "morgan": "^1.8.1",
     "node-mailer": "^0.1.1",
     "static-favicon": "^2.0.0-alpha"
