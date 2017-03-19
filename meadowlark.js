@@ -47,19 +47,6 @@ app.use(require('express-session')({
 app.use(require('./lib/tourRequiresWaiver.js'));
 
 
-switch(app.get('env')){
-	case 'development':
-		// compact, colorful dev logging
-		app.use(require('morgan')('dev'));
-		break;
-	case 'production':
-		// module 'express-logger' supports daily log rotation
-		app.use(require('express-logger')({
-			path:__dirname+'/log/requests.log'
-		}));
-		break;
-}
-
 // mocked weather data
 function getWeatherData(){
     return {
@@ -102,11 +89,6 @@ app.use(function(req,res,next){
 	res.locals.flash = req.session.flash;
 	delete req.session.flash;
 	next();
-});
-
-app.use(function(req,res,next){
-	var cluster = require('cluster');
-	if (cluster.isWorker) console.log('Worker %d received request', cluster.worker.id);
 });
 
 app.get('/', function(req,res){
@@ -301,19 +283,7 @@ app.use(function(err,req,res,next){
 	res.render('500');
 });
 
-function startServer(){
-
 app.listen(app.get('port'), function(){
-	console.log( 'Express started in ' + app.get('env')+ ' mode on http://localhost:' + 
+	console.log( 'Express started on http://localhost:' + 
 		app.get('port')+ '; Press Ctrl-C to terminate.');
 });
-}
-
-if(require.main===module){
-	//application run directly; start app server
-	startServer();
-} else {
-	// application imported as a module via "require": export function
-	// to create server
-	module.exports = startServer;
-}
