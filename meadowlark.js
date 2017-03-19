@@ -7,7 +7,7 @@ var cartValidation = require('./lib/cartValidation.js');
 var connect = require('connect');
 var emailService = require('./lib/email.js')(credentials);
 var fs = require('fs');
-
+Vacation = require('./models/vacation.js');
 var app = express();
 
 //set up handlebars view engine
@@ -88,6 +88,25 @@ app.use(function(req,res,next){
 app.use(express.static(__dirname + '/public'));
 
 app.use(require('body-parser').urlencoded({extended:true}));
+
+// database configuration
+var mongoose = require('mongoose');
+var opts = {
+	server: {
+		socketOptions: { keepAlive: 1}
+	}
+};
+
+switch(app.get('env')){
+	case 'development':
+		mongoose.connect(credentials.mongo.development.connectionString, opts);
+		break;
+	case 'production':
+		mongoose.connect(credentials.mongo.production.connectionString, opts);
+		break;
+	default:
+		throw new Error('Unknown execution environment: ' + app.get('env'));
+}
 
 // set 'showTests' context property if the querystring contains test=1
 app.use(function(req, res, next){
@@ -290,16 +309,43 @@ app.get('/contest/vacation-photo', function(req,res){
 	});
 });
 
-app.post('/contest/vacation-photo/:year/:month', function(req,res){
-	var form = new formidable.IncomingForm();
-	form.parse(req, function(err,fields,files){
-		if(err) return res.redirect(303, '/error');
-		console.log('received fields: ');
-		console.log(fields);
-		console.log('received files: ');
-		console.log(files);
-		res.redirect(303,'/thank-you');
-	});
+
+// make sure data directory exists
+var dataDir = __dirname + '/data';
+var vacationPhotoDir = dataDir + '/vacation-photo';
+if(!fs.existsSync(dataDir)) fs.mkdirSync(dataDir); 
+if(!fs.existsSync(vacationPhotoDir)) fs.mkdirSync(vacationPhotoDir);
+
+function saveContestEntry(contestName, email, year, month, photoPath){
+    // TODO...this will come later
+}
+
+app.post('/contest/vacation-photo/:year/:month', function(req, res){
+    var form = new formidable.IncomingForm();
+    form.parse(req, function(err, fields, files){
+        if(err) {
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Oops!',
+                message: 'There was an error processing your submission. ' +
+                    'Pelase try again.',
+            };
+            return res.redirect(303, '/contest/vacation-photo');
+        }
+        var photo = files.photo;
+        var dir = vacationPhotoDir + '/' + Date.now();
+        var path = dir + '/' + photo.name;
+        fs.mkdirSync(dir);
+        fs.renameSync(photo.path, dir + '/' + photo.name);
+        saveContestEntry('vacation-photo', fields.email,
+            req.params.year, req.params.month, path);
+        req.session.flash = {
+            type: 'success',
+            intro: 'Good luck!',
+            message: 'You have been entered into the contest.',
+        };
+        return res.redirect(303, '/contest/vacation-photo/entries');
+    });
 });
 
 app.post('/process',function(req,res){
