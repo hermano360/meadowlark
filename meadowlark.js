@@ -3,7 +3,6 @@ var fortune 	= require('./lib/fortune.js');
 var formidable 	= require('formidable');
 var jpupload 	= require('jquery-file-upload-middleware');
 var credentials	= require('./credentials.js');
-var cartValidation = require('./lib/cartValidation.js');
 var connect = require('connect');
 var emailService = require('./lib/email.js')(credentials);
 var fs = require('fs');
@@ -107,6 +106,58 @@ switch(app.get('env')){
 	default:
 		throw new Error('Unknown execution environment: ' + app.get('env'));
 }
+
+// Seeding initial MongoDB Data
+Vacation.find(function(err,vacations){
+	if(err) return console.log(err);
+	if(vacations.length) return;
+
+	new Vacation({
+		name: "Hood River Day Trip",
+		slug: 'hood-river-day-trip',
+		category: 'Day Trip',
+		sku: "HR199",
+		description: 'Spend a day sailing on the Columbia and ' + 
+			'enjoying craft beers in Hood River!',
+		priceInCents: '9995',
+		tags: ['day trip', 'hood river', 'sailing', 'windsurfing', 'breweries'],
+		inSeason: true,
+		maximumGuests: 16,
+		available:true,
+		packagesSold: 0
+	}).save();
+
+	new Vacation({
+		name: "Oregon Coast Getaway",
+		slug: "oregon-coast-getaway",
+		category: 'Weekend Getaway',
+		sku: 'OC39',
+		description: 'Enjoy the ocean air and quaint coastal towns!',
+		priceInCents: 269995,
+		tags: ['weekend getaway', 'oregon coast', 'beachcombing'],
+		inSeason: false,
+		maximumGuests: 8,
+		available: true,
+		packagesSold: 0
+	}).save();
+
+	new Vacation({
+		name: "Rock Climbing in Bend",
+		slug: 'rock-climbing-in-bend',
+		category: 'Adventure',
+		sku: 'B99',
+		description: 'Experience the Thrill of climbing in the high desert.', 
+		priceInCents: 289995,
+		tags: ['weekend getaway', 'bend', 'high desert','rock climbing'],
+		inSeason: true,
+		requiresWaiver: true,
+		maximumGuests: 4,
+		available: false,
+		packagesSold: 0,
+		notes: 'The tour guide is currently recoving from a skiiing accident'
+	}).save();
+
+})
 
 // set 'showTests' context property if the querystring contains test=1
 app.use(function(req, res, next){
@@ -263,9 +314,76 @@ app.post('/newsletter', function(req, res){
 });
 
 
+var cartValidation = require('./lib/cartValidation.js');
 
 app.use(cartValidation.checkWaivers);
 app.use(cartValidation.checkGuestCounts);
+
+app.get('/cart/add', function(req, res, next){
+	var cart = req.session.cart || (req.session.cart = { items: [] });
+	Vacation.findOne({ sku: req.query.sku }, function(err, vacation){
+		if(err) return next(err);
+		if(!vacation) return next(new Error('Unknown vacation SKU: ' + req.query.sku));
+		cart.items.push({
+			vacation: vacation,
+			guests: req.body.guests || 1,
+		});
+		res.redirect(303, '/cart');
+	});
+});
+app.post('/cart/add', function(req, res, next){
+	var cart = req.session.cart || (req.session.cart = { items: [] });
+	Vacation.findOne({ sku: req.body.sku }, function(err, vacation){
+		if(err) return next(err);
+		if(!vacation) return next(new Error('Unknown vacation SKU: ' + req.body.sku));
+		cart.items.push({
+			vacation: vacation,
+			guests: req.body.guests || 1,
+		});
+		res.redirect(303, '/cart');
+	});
+});
+app.get('/cart', function(req, res, next){
+	var cart = req.session.cart;
+	if(!cart) next();
+	res.render('cart', { cart: cart });
+});
+app.get('/cart/checkout', function(req, res, next){
+	var cart = req.session.cart;
+	if(!cart) next();
+	res.render('cart-checkout');
+});
+app.get('/cart/thank-you', function(req, res){
+	res.render('cart-thank-you', { cart: req.session.cart });
+});
+app.get('/email/cart/thank-you', function(req, res){
+	res.render('email/cart-thank-you', { cart: req.session.cart, layout: null });
+});
+app.post('/cart/checkout', function(req, res){
+	var cart = req.session.cart;
+	if(!cart) next(new Error('Cart does not exist.'));
+	var name = req.body.name || '', email = req.body.email || '';
+	// input validation
+	if(!email.match(VALID_EMAIL_REGEX)) return res.next(new Error('Invalid email address.'));
+	// assign a random cart ID; normally we would use a database ID here
+	cart.number = Math.random().toString().replace(/^0\.0*/, '');
+	cart.billing = {
+		name: name,
+		email: email,
+	};
+    res.render('email/cart-thank-you', 
+    	{ layout: null, cart: cart }, function(err,html){
+	        if( err ) console.log('error in email template');
+	        emailService.send(cart.billing.email,
+	        	'Thank you for booking your trip with Meadowlark Travel!',
+	        	html);
+	    }
+    );
+    res.render('cart-thank-you', { cart: cart });
+});
+
+
+
 
 app.get('/thank-you', function(req,res){
 	res.render('thank-you');
@@ -347,6 +465,23 @@ app.post('/contest/vacation-photo/:year/:month', function(req, res){
         return res.redirect(303, '/contest/vacation-photo/entries');
     });
 });
+
+app.get('/vacations', function(req,res){
+	Vacation.find({available: true }, function(err,vacations){
+		var context = {
+			vacations: vacations.map(function(vacation){
+				return {
+					sku: vacation.sku,
+					name: vacation.name,
+					description: vacation.description,
+					price: vacation.getDisplayPrice(),
+					inSeason: vacation.inSeason
+				}
+			})
+		};
+		res.render('vacations', context);
+	})
+})
 
 app.post('/process',function(req,res){
 
