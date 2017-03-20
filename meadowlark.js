@@ -37,6 +37,17 @@ switch(app.get('env')){
 		break;
 }
 
+var MongoSessionStore = require('session-mongoose')(require('connect'));
+var sessionStore = new MongoSessionStore({ url:
+	credentials.mongo[app.get('env')].connectionString });
+app.use(require('cookie-parser')(credentials.cookieSecret));
+app.use(require('express-session')({
+	resave : false,
+	saveUninitialized: false,
+	secret: credentials.cookieSecret,
+	store: sessionStore
+}));
+
 app.set('port', process.env.PORT || 3000);
 
 app.use(function(req,res,next){
@@ -132,10 +143,10 @@ Vacation.find(function(err,vacations){
 		slug: "oregon-coast-getaway",
 		category: 'Weekend Getaway',
 		sku: 'OC39',
-		description: 'Enjoy the ocean air and quaint coastal towns!',
+		description: 'Enjoy the ocean air and quaint coastal townsend!',
 		priceInCents: 269995,
 		tags: ['weekend getaway', 'oregon coast', 'beachcombing'],
-		inSeason: false,
+		inSeason: true,
 		maximumGuests: 8,
 		available: true,
 		packagesSold: 0
@@ -152,7 +163,7 @@ Vacation.find(function(err,vacations){
 		inSeason: true,
 		requiresWaiver: true,
 		maximumGuests: 4,
-		available: false,
+		available: true,
 		packagesSold: 0,
 		notes: 'The tour guide is currently recoving from a skiiing accident'
 	}).save();
@@ -165,12 +176,7 @@ app.use(function(req, res, next){
 		req.query.test === '1';
 	next();
 });
-app.use(require('cookie-parser')(credentials.cookieSecret));
-app.use(require('express-session')({
-	resave : false,
-	saveUninitialized: false,
-	secret: credentials.cookieSecret
-}));
+
 
 app.use(require('./lib/tourRequiresWaiver.js'));
 
@@ -466,22 +472,7 @@ app.post('/contest/vacation-photo/:year/:month', function(req, res){
     });
 });
 
-app.get('/vacations', function(req,res){
-	Vacation.find({available: true }, function(err,vacations){
-		var context = {
-			vacations: vacations.map(function(vacation){
-				return {
-					sku: vacation.sku,
-					name: vacation.name,
-					description: vacation.description,
-					price: vacation.getDisplayPrice(),
-					inSeason: vacation.inSeason
-				}
-			})
-		};
-		res.render('vacations', context);
-	})
-})
+
 
 app.post('/process',function(req,res){
 
@@ -509,6 +500,46 @@ app.use('/upload', function(req,res,next){
 		}
 	})(req,res,next);
 });
+
+app.get('/set-currency/:currency', function(req,res){
+	req.session.currency = req.params.currency;
+	return res.redirect(303, '/vacations');
+});
+
+function convertFromUSD(value, currency){
+	switch(currency){
+		case 'USD': return value * 1;
+		case 'GBP': return value * 0.6;
+		case 'BTC': return value * 0.002370;
+		default: return NaN;
+	}
+}
+
+app.get('/vacations', function(req,res){
+	Vacation.find({available: true }, function(err,vacations){
+		var currency = req.session.currency || 'USD';
+		var context = {
+			currency: currency,
+			vacations: vacations.map(function(vacation){
+				return {
+					sku: vacation.sku,
+					name: vacation.name,
+					description: vacation.description,
+					qty: vacation.qty,
+					price: convertFromUSD(vacation.priceInCents/100,currency),
+					inSeason: vacation.inSeason
+				}
+			})
+		};
+		switch(currency){
+			case 'USD': context.currencyUSD = 'selected'; break;
+			case 'GBP': context.currencyGBP = 'selected'; break;
+			case 'BTC': context.currencyBTC = 'selected'; break;
+		}
+		res.render('vacations', context);
+	})
+})
+
  
 app.get('/fail', function(req,res){
 	throw new Error("Nope!");
