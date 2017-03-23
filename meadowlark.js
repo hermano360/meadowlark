@@ -5,7 +5,9 @@ var express 	= require('express'),
 	fs = require('fs'),
 	Vacation = require('./models/vacation.js'),
 	VacationInSeasonListener = require('./models/vacationInSeasonListener.js'),
-	vhost = require('vhost');
+	vhost = require('vhost'),
+	connect = require('connect');
+
 
 var app = express();
 
@@ -20,6 +22,9 @@ var handlebars = require('express-handlebars').create({
 				if(!this._sections) this._sections = {};
 				this._sections[name]= options.fn(this);
 				return null;
+			},
+			static: function(name){
+				return require('./lib/static.js').map(name);
 			}
 }});
 
@@ -27,6 +32,8 @@ app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 
 app.set('port', process.env.PORT || 3000);
+
+app.use('/api', require('cors')());
 
 app.use(function(req,res,next){
 	// create a domain for this request
@@ -224,6 +231,16 @@ app.use(function(req, res, next){
  	next();
 });
 
+//adding easter egg
+var static = require('./lib/static.js').map;
+
+app.use(function(req,res,next){
+	var now = new Date();
+	res.locals.logoImage = now.getMonth()==2 && now.getDate()==23 ?
+		static('/img/logo_bud_clark.png') : static('/img/logo.png');
+	next();
+});
+
 //creating "admin" subdomain
 var admin = express.Router();
 app.use(vhost('admin.*', admin));
@@ -237,24 +254,65 @@ admin.get('/users', function(req,res){
 });
 
 
-
+//routes
 var routes = require('./routes.js')(app);
 
+//api
 
-// app.post('/process',function(req,res){
+var Attraction = require('./models/attraction.js');
 
-// 	if(req.xhr || req.accepts('json,html')==='json'){
-// 		//if there was an error, we should send { error: 'error description'}
-// 		res.send({success:true});
-// 	} else {
-// 		//if there was an eror, we would redirect to an error page
-// 		res.redirect(303,'/thank-you');
-// 	}
-// 	console.log('Form (from querystring): ' + req.query.form);
-// 	console.log('CSRF token (from hidden form field): ' + req.body._csrf);
-// 	console.log('Name (from visible form field): ' + req.body.name);
-// 	console.log('Email (from visible form field): ' + req.body.email);
-// });
+var rest = require('connect-rest');
+
+rest.get('/attractions', function(req, content, cb){
+    Attraction.find({ approved: true }, function(err, attractions){
+        if(err) return cb({ error: 'Internal error.' });
+        cb(null, attractions.map(function(a){
+            return {
+                name: a.name,
+                description: a.description,
+                location: a.location,
+            };
+        }));
+    });
+});
+
+rest.post('/attraction', function(req, content, cb){
+    var a = new Attraction({
+        name: req.body.name,
+        description: req.body.description,
+        location: { lat: req.body.lat, lng: req.body.lng },
+        history: {
+            event: 'created',
+            email: req.body.email,
+            date: new Date(),
+        },
+        approved: false,
+    });
+    a.save(function(err, a){
+        if(err) return cb({ error: 'Unable to add attraction.' });
+        cb(null, { id: a._id });
+    }); 
+});
+
+rest.get('/attraction/:id', function(req, content, cb){
+    Attraction.findById(req.params.id, function(err, a){
+        if(err) return cb({ error: 'Unable to retrieve attraction.' });
+        cb(null, { 
+            name: a.name,
+            description: a.description,
+            location: a.location,
+        });
+    });
+});
+
+//API configuration
+var apiOptions = {
+	context: '/',
+	domain: require('domain').create()
+}
+
+//link API into pipeline
+app.use(vhost('api.*', rest.rester(apiOptions)));
 
 
 

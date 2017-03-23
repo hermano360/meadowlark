@@ -4,6 +4,10 @@ module.exports = function(grunt){
 	[
 		'grunt-contrib-jshint',
 		'grunt-exec',
+		'grunt-contrib-less',
+		'grunt-contrib-uglify',
+		'grunt-contrib-cssmin',
+		'grunt-hashres'
 	].forEach(function(task){
 		grunt.loadNpmTasks(task);
 	});
@@ -20,6 +24,51 @@ module.exports = function(grunt){
 		exec: {
 			linkchecker: { cmd: 'linkchecker http://localhost:3000' }
 		},
+		less: {
+			development: {
+				options: {
+					customFunctions: {
+						static: function(lessObject, name){
+							return 'url("' + require('./lib/static.js').map(name.value) + '")';
+						}
+					}
+				},
+				files: {
+					'public/css/main.css': 'less/main.less',
+					'public/css/cart.css': 'less/cart.less'
+				}
+			}
+		},
+		uglify: {
+			all: {
+				files: {
+					'public/js/meadowlark.min.js': ['public/js/**/*.js']
+				}
+			}
+		},
+		cssmin: {
+			combine: {
+				files: {
+					'public/css/meadowlark.css': ['public/css/**/*.css', '!public/css/meadowlark*.css']
+				}
+			},
+			minify: {
+				src: 'public/css/meadowlark.css',
+				dest: 'public/css/meadowlark.min.css'
+			}
+		},
+		hashres: {
+			options: { fileNameFormat: '${name}.${hash}.${ext}' },
+			all: {
+				src: [
+					'public/js/meadowlark.min.js',
+					'public/css/meadowlark.min.css'
+				],
+				dest: [
+					'views/layouts/main.handlebars'
+				]
+			}
+		}
 	});	
 
 	// register tasks
