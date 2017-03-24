@@ -7,7 +7,8 @@ module.exports = function(grunt){
 		'grunt-contrib-less',
 		'grunt-contrib-uglify',
 		'grunt-contrib-cssmin',
-		'grunt-hashres'
+		'grunt-hashres',
+		'grunt-lint-pattern'
 	].forEach(function(task){
 		grunt.loadNpmTasks(task);
 	});
@@ -65,12 +66,54 @@ module.exports = function(grunt){
 					'public/css/meadowlark.min.css'
 				],
 				dest: [
-					'views/layouts/main.handlebars'
+					'config.js'
 				]
 			}
+		},
+		lint_pattern: {
+			view_statics: {
+				options: {
+					rules: [
+						{
+							pattern: /<link [^>]*href=["'](?!\{\{static )/,
+							message: 'Un-mapped static resource found in <link>.'
+						},
+						{
+							pattern: /<script [^>]*src=["'](?!\{\{static )/,
+							message: 'Un-mapped static resource found in <script>.'
+						},
+						{
+							pattern: /<img [^>]*src=["'](?!\{\{static )/,
+							message: 'Un=mapped static resource found in <img>.'
+						}
+					]
+				},
+				files: {
+					src: [
+						'views/**/*.handlebars'
+					]
+				}
+			},
+			css_statics: {
+				options: {
+					rules: [
+						{
+							pattern: /url\(/,
+							message: 'Un-mapped static resource found in LESS property'
+						}
+					]
+				},
+				files: {
+					src: [
+						'less/**/*.less'
+					]
+				}
+			}
+
 		}
 	});	
 
 	// register tasks
-	grunt.registerTask('default', ['cafemocha','jshint','exec']);
+	grunt.registerTask('default', [/*'cafemocha',*/'jshint','exec', 'lint_pattern']);
+	grunt.registerTask('static', ['less', 'cssmin', 'uglify', 'hashres']);
 };

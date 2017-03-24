@@ -20,6 +20,13 @@
 	</style>
 	<link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap-theme.min.css">
 	<link rel="stylesheet" href="{{ static '/css/main.css'}}">
+
+	{{#each _bundles.css}}
+		<link rel="stylesheet" href="{{static .}}">
+	{{/each}}
+	{{#each _bundles.js.head}}
+		<script src="{{static .}}"></script>
+	{{/each}}
 	
 </head>
 <body>
@@ -48,23 +55,6 @@
 
 			{{{body}}}
 
-
-
-
-{{!-- 	{{#if showTests}}
-		<div id="mocha"></div>
-		<script src="/vendor/mocha.js"></script>
-		<script src="/vendor/chai.js"></script>
-		<script>
-			mocha.ui('tdd');
-			var assert = chai.assert;
-		</script>
-		<script src="/qa/tests-global.js"></script>
-		{{#if pageTestScript}}
-			<script src="{{pageTestScript}}"></script>
-		{{/if}} 
-		<script>mocha.run();</script>
-		{{/if}} --}}
 
 		 <script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
 		<script>window.jQuery || document.write('<script src="{{static '/vendor/js/jquery-2.1.1.min.js'}}"><\/script>')</script>

@@ -4,6 +4,7 @@ var express 	= require('express'),
 	formidable 	= require('formidable'),
 	fs = require('fs'),
 	Vacation = require('./models/vacation.js'),
+
 	VacationInSeasonListener = require('./models/vacationInSeasonListener.js'),
 	vhost = require('vhost'),
 	connect = require('connect');
@@ -30,6 +31,10 @@ var handlebars = require('express-handlebars').create({
 
 app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
+
+// set up css/js bundling
+var bundler = require('connect-bundle')(require('./config.js'));
+app.use(bundler);
 
 app.set('port', process.env.PORT || 3000);
 
@@ -178,7 +183,7 @@ Vacation.find(function(err,vacations){
 		notes: 'The tour guide is currently recoving from a skiiing accident'
 	}).save();
 
-})
+});
 
 app.use(function(req,res,next){
 	// if theres a flash message, transfer
@@ -263,14 +268,39 @@ var Attraction = require('./models/attraction.js');
 
 var rest = require('connect-rest');
 
+
+
+// Seeding initial attractions MongoDB Data
+Attraction.find(function(err,attractions){
+	if(err) return console.log(err);
+	if(attractions.length) return;
+
+	new Attraction({
+		name: "Hood River Day Attraction",
+		description: 'Spend a day sailing on the Columbia and ' + 
+					 'enjoying craft beers in Hood River!',
+		location: {lat: 34, lng: -134},
+		history: {
+			event: "Not sure whats meant to go here",
+			notes: "There are notes here",
+			email: "brother360@gmail.com",
+			date: 10/28/1992
+		},
+		updateId: "IDK what this is",
+		approved: true
+	}).save();
+
+});
+
 rest.get('/attractions', function(req, content, cb){
     Attraction.find({ approved: true }, function(err, attractions){
         if(err) return cb({ error: 'Internal error.' });
+
         cb(null, attractions.map(function(a){
             return {
                 name: a.name,
                 description: a.description,
-                location: a.location,
+                location: a.location
             };
         }));
     });
@@ -309,7 +339,7 @@ rest.get('/attraction/:id', function(req, content, cb){
 var apiOptions = {
 	context: '/',
 	domain: require('domain').create()
-}
+};
 
 //link API into pipeline
 app.use(vhost('api.*', rest.rester(apiOptions)));
