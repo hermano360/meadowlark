@@ -42,10 +42,6 @@ exports.newsletterProcessPost = function(req, res){
 	}
 
 
-
-
-
-
 	new NewsletterSignup({ name: name, email: email }).save(function(err){
 		if(err) {
 			if(req.xhr) return res.json({ error: 'Database error.' });

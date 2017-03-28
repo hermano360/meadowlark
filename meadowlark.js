@@ -1,10 +1,10 @@
 var express 	= require('express'),
-	http = require('http'),
+	https = require('https'),
 	fortune = require('./lib/fortune.js'),
 	formidable 	= require('formidable'),
 	fs = require('fs'),
 	Vacation = require('./models/vacation.js'),
-
+	Q = require('q'),
 	VacationInSeasonListener = require('./models/vacationInSeasonListener.js'),
 	vhost = require('vhost'),
 	connect = require('connect');
@@ -113,6 +113,13 @@ app.use(require('express-session')({
 
 app.use(express.static(__dirname + '/public'));
 app.use(require('body-parser').urlencoded({extended:true}));
+
+app.use(require('csurf')());
+
+app.use(function(req,res,next){
+	res.locals._csrfToken = req.csrfToken();
+	next();
+});
 
 // database configuration
 var mongoose = require('mongoose');
@@ -236,6 +243,37 @@ app.use(function(req, res, next){
  	next();
 });
 
+var topTweets = {
+	count: 10,
+	lastRefreshed: 0,
+	refreshInterval: 15 * 60 * 1000,
+	tweets: []
+};
+
+function getTopTweets(cb){
+	if(Date.now() < topTweets.lastRefreshed + topTweets.refreshInterval){
+		return cb(topTweets.tweets);
+	}
+	twitter.search('#meadowlarktravel', topTweets.count, function(result){
+		var formattedTweets = [];
+		var promises = [];
+		var embedOpts = { omit_script: 1};
+		result.statuses.forEach(function(status){
+			var deferred  = Q.defer();
+			twitter.embed(status.id_str, embedOpts, function(embed){
+				formattedTweets.push(embed.html);
+				deferred.resolve();
+			});
+			promises.push(deferred.promise);
+		});
+		Q.all(promises).then(function(){
+			topTweets.lastRefreshed = Date.now();
+			cb(topTweets.tweets = formattedTweets);
+		});
+	});
+}
+
+
 //adding easter egg
 var static = require('./lib/static.js').map;
 
@@ -341,6 +379,85 @@ var apiOptions = {
 	domain: require('domain').create()
 };
 
+apiOptions.domain.on('error', function(err){
+    console.log('API domain error.\n', err.stack);
+    setTimeout(function(){
+        console.log('Server shutting down after API domain error.');
+        process.exit(1);
+    }, 5000);
+    server.close();
+    var worker = require('cluster').worker;
+    if(worker) worker.disconnect();
+});
+
+var auth = require('./lib/auth.js')(app, {
+	// baseUrl is optional; it will default to localhost if you omit it;
+	// it can be helpful to set this if you're not working on your local machine. 
+	// For example, if you were using a staging server,
+	// you might set the BASE_URL env to https://staging.meadowlark.com
+	baseUrl: process.env.Base_URL,
+	providers: credentials.authProviders,
+	successRedirect: '/account',
+	failureRedirect: '/unauthorized'
+});
+
+// auth.init() links in Passport middleware:
+auth.init();
+
+// now we can specify our auth routes:
+auth.registerRoutes();
+
+function customerOnly(req,res,next) {
+	if(req.user && req.user.role==='customer') return next();
+	//we want customer-only pages to know they need to logon
+	res.redirect(303, '/unauthorized');
+}
+
+function employeeOnly(req,res,next){
+	if(req.user && req.user.role==='employee') return next();
+	//we want employee-only authorization failures to be 'hidden'
+	//to prevent potential hackers from even knowing such a page
+	//exits
+	next('route');
+}
+
+function allow(roles){
+	return function(req,res, next){
+		if(req.user && roles.split(',').indexOf(req.user.role)!==-1) return next();
+		res.render(303,'/unauthorized');
+	};
+}
+
+
+
+// app.get('/account', function(req,res){
+// 	if(!req.user) return res.redirect(303, '/unauthorized');
+// 	res.render('account', { username: req.user.name });
+// });
+
+//we also need an 'unauthorized' page
+app.get('/unauthorized', function(req,res){
+	res.status(403).render('unauthorized');
+});
+
+app.get('/account', allow('customer,employee'), function(req,res){
+	res.render('account');
+});
+
+app.get('/account/order-history', customerOnly, function(req,res){
+	res.render('account/order-history');
+});
+
+app.get('/account/email-prefs', customerOnly, function(req,res){
+	res.render('account/email-prefs');
+});
+
+//employer routes
+app.get('/sales', employeeOnly, function(req,res){
+	res.render('sales');
+});
+
+
 //link API into pipeline
 app.use(vhost('api.*', rest.rester(apiOptions)));
 
@@ -360,13 +477,15 @@ app.use(function(err,req,res,next){
 
 
 var server;
+var options = {
+	key: fs.readFileSync(__dirname + '/ssl/meadowlark.pem'),
+	cert: fs.readFileSync(__dirname + '/ssl/meadowlark.crt')
+}
 
 function startServer() {
-    server = http.createServer(app).listen(app.get('port'), function(){
-      console.log( 'Express started in ' + app.get('env') +
-        ' mode on http://localhost:' + app.get('port') +
-        '; press Ctrl-C to terminate.' );
-    });
+	https.createServer(options,app).listen(app.get('port'), function(){
+		console.log('Express started in ' + app.get('env') + ' mode on port ' + app.get('port') + ' using HTTPS.');
+	})
 }
 
 if(require.main === module){
